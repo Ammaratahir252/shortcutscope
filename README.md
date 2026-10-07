@@ -78,7 +78,7 @@ If you use this tool, please cite:
 ```bibtex
 @article{bhutta2026shortcutscope,
   title={Shortcut Learning and Pretraining Lineage in Audio Deepfake Detection: A Multi-Dataset Causal Audit},
-  author={Bhutta, Sozzy},
+  author={Tahir, Ammara},
   year={2026}
 }
 ```
