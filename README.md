@@ -76,7 +76,7 @@ speech at all — to see how separable the classes are from artifacts alone.
 If you use this tool, please cite:
 
 ```bibtex
-@article{Ammara2026shortcutscope,
+@article{tahir2026shortcutscope,
   title={Shortcut Learning and Pretraining Lineage in Audio Deepfake Detection: A Multi-Dataset Causal Audit},
   author={Tahir, Ammara},
   year={2026}
