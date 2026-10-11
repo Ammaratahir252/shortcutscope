@@ -9,22 +9,24 @@ these 7 features alone achieves high accuracy, the dataset likely contains a
 "shortcut" that lets models cheat instead of learning real deepfake detection.
 
 Background / methodology:
-    This tool implements the audit protocol developed in our paper "Shortcut
-    Learning and Pretraining Lineage in Audio Deepfake Detection: A Multi-Dataset
-    Causal Audit" (2026), extending the feature-ablation method introduced by
-    Müller et al., "Speech is Silver, Silence is Golden" (2021), to the leading
-    silence, trailing silence, duration, loudness (RMS), zero-crossing rate (ZCR),
-    and peak amplitude features.
+    This tool implements the acoustic audit described in the paper
+    "Acoustic Shortcuts in a Community-Built Audio Deepfake Dataset: An Audit
+    and Cross-Dataset Stress Test" (A. Tahir, 2026). It extends the silence
+    analysis of Müller et al., "Speech is Silver, Silence is Golden" (2021), to
+    seven features: leading silence, trailing silence, duration, loudness (RMS),
+    zero-crossing rate (ZCR), peak amplitude and silence ratio.
 
 Usage:
-    # Audit a HuggingFace dataset with 'audio' and 'label' columns (0=real, 1=fake)
-    python shortcutscope.py --hf_dataset garystafford/deepfake-audio-detection
+    # Audit a HuggingFace dataset with 'audio' and 'label' columns.
+    # Check the dataset card first: --fake_label is the label value that means FAKE.
+    python shortcutscope.py --hf_dataset garystafford/deepfake-audio-detection --fake_label 1
+    python shortcutscope.py --hf_dataset DeepFake-Audio-Rangers/Arabic_Audio_Deepfake --fake_label 0
 
     # Audit a dataset laid out as two folders of audio files
     python shortcutscope.py --real_dir path/to/real --fake_dir path/to/fake
 
-    # Save a full report to CSV
-    python shortcutscope.py --hf_dataset <name> --output report.csv
+    # Save the full report as JSON
+    python shortcutscope.py --hf_dataset <name> --output report.json
 
 Requirements:
     pip install librosa numpy scikit-learn datasets soundfile
@@ -101,15 +103,26 @@ def interpret_d(d: float) -> str:
     return "negligible"
 
 
-def load_from_hf(dataset_name: str, label_field: str = "label", audio_field: str = "audio"):
+def load_from_hf(dataset_name: str, fake_label: int = 1, label_field: str = "label",
+                 audio_field: str = "audio", split: str = "train"):
     from datasets import load_dataset
 
-    ds = load_dataset(dataset_name, split="train")
+    ds = load_dataset(dataset_name, split=split)
+    labels = set(ds[label_field])
+    if len(labels) != 2 or fake_label not in labels:
+        sys.exit(f"Expected exactly two label values including {fake_label}, found {sorted(labels)}. "
+                 "Check --label_field and --fake_label against the dataset card.")
+    try:
+        names = ds.features[label_field].names
+        print(f"Label names from dataset features: {dict(enumerate(names))}; "
+              f"treating {fake_label} ({names[fake_label]}) as FAKE", file=sys.stderr)
+    except (AttributeError, IndexError, KeyError, TypeError):
+        print(f"Treating label value {fake_label} as FAKE", file=sys.stderr)
     real_feats, fake_feats = [], []
     for i, sample in enumerate(ds):
         audio = sample[audio_field]
         feats = extract_features(audio["array"], audio["sampling_rate"])
-        target = fake_feats if sample[label_field] == 1 else real_feats
+        target = fake_feats if sample[label_field] == fake_label else real_feats
         target.append(feats)
         if i % 300 == 0:
             print(f"  processed {i}/{len(ds)}", file=sys.stderr)
@@ -189,6 +202,7 @@ def print_report(report: dict):
     print("=" * 60)
     print(f"Real samples: {report['n_real']} | Fake samples: {report['n_fake']}\n")
 
+    print("Cohen's d is FAKE minus REAL: positive = larger in fake clips.")
     print(f"{'Feature':<22}{'Cohens d':<12}{'Interpretation'}")
     print("-" * 50)
     for name, info in report["effect_sizes"].items():
@@ -223,14 +237,20 @@ def print_report(report: dict):
 
 def main():
     parser = argparse.ArgumentParser(description="Audit an audio dataset for acoustic shortcuts.")
-    parser.add_argument("--hf_dataset", type=str, help="HuggingFace dataset name (needs 'audio' + 'label' columns, label: 0=real, 1=fake)")
+    parser.add_argument("--hf_dataset", type=str, help="HuggingFace dataset name (needs an audio column and a binary label column)")
+    parser.add_argument("--fake_label", type=int, default=1, help="Label value that means FAKE in the HF dataset (default: 1). Check the dataset card; e.g. 1 for garystafford/deepfake-audio-detection, 0 for DeepFake-Audio-Rangers/Arabic_Audio_Deepfake")
+    parser.add_argument("--label_field", type=str, default="label", help="Name of the label column (default: label)")
+    parser.add_argument("--audio_field", type=str, default="audio", help="Name of the audio column (default: audio)")
+    parser.add_argument("--split", type=str, default="train", help="Dataset split to audit (default: train)")
     parser.add_argument("--real_dir", type=str, help="Folder of real/bonafide audio files")
     parser.add_argument("--fake_dir", type=str, help="Folder of fake/spoof audio files")
     parser.add_argument("--output", type=str, default=None, help="Optional path to save the report as JSON")
     args = parser.parse_args()
 
     if args.hf_dataset:
-        real_feats, fake_feats = load_from_hf(args.hf_dataset)
+        real_feats, fake_feats = load_from_hf(args.hf_dataset, fake_label=args.fake_label,
+                                              label_field=args.label_field,
+                                              audio_field=args.audio_field, split=args.split)
     elif args.real_dir and args.fake_dir:
         real_feats, fake_feats = load_from_folders(args.real_dir, args.fake_dir)
     else:

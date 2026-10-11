@@ -1,88 +1,137 @@
 # ShortcutScope
 
-A lightweight auditing tool that checks whether an audio deepfake detection
-dataset can be "solved" using simple acoustic artifacts (silence timing,
-loudness, duration) instead of genuine speech content — a known failure mode
-called **shortcut learning**.
+A lightweight tool that checks whether an audio deepfake detection dataset can
+be "solved" from simple acoustic properties (silence timing, loudness,
+zero-crossing rate, duration) instead of genuine speech content. Relying on
+such cues is a known failure mode called **shortcut learning**.
 
-If your dataset's real and fake audio classes are separable using only these
-7 low-level features, any model trained on it risks learning the artifact
-instead of actual deepfake detection — producing inflated accuracy numbers
-that collapse on new data.
+If the real and fake classes of a dataset are separable using only these seven
+low-level features, a model trained on it may learn the artifact instead of
+real deepfake cues, producing inflated in-domain scores that do not hold up on
+other data.
 
 ## Background
 
-This tool implements the audit protocol from our paper *"Shortcut Learning
-and Pretraining Lineage in Audio Deepfake Detection: A Multi-Dataset Causal
-Audit"* (2026), which extends the feature-ablation method introduced by
-Müller et al. in *"Speech is Silver, Silence is Golden"* (2021,
-[arXiv:2106.12914](https://arxiv.org/abs/2106.12914)) to a broader feature
-set and applies it to community-built datasets.
+ShortcutScope implements the acoustic audit described in:
+
+> A. Tahir, *Acoustic Shortcuts in a Community-Built Audio Deepfake Dataset:
+> An Audit and Cross-Dataset Stress Test*, 2026.
+
+It extends the silence analysis of Müller et al., *"Speech is Silver, Silence
+is Golden: What do ASVspoof-trained Models Really Learn?"* (ASVspoof 2021
+Workshop, [arXiv:2106.12914](https://arxiv.org/abs/2106.12914)), to a broader
+set of features and applies it to community-built datasets.
+
+On `garystafford/deepfake-audio-detection`, the features alone reach an AUC of
+0.958, with zero-crossing rate (Cohen's d = +2.82) and leading silence
+(d = +1.28) as the largest effects. See the paper for details.
 
 ## Install
 
 ```bash
-pip install librosa numpy scikit-learn datasets soundfile
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-**Audit a HuggingFace dataset** (expects `audio` and `label` columns, where
-`label: 0 = real/bonafide, 1 = fake/spoof`):
+**Audit a Hugging Face dataset.** The dataset needs an audio column and a
+binary label column. Label conventions differ between datasets, so **check the
+dataset card and pass the label value that means FAKE** with `--fake_label`
+(default: 1). The tool prints the label names it finds, so you can confirm the
+mapping.
 
 ```bash
-python shortcutscope.py --hf_dataset garystafford/deepfake-audio-detection
+# garystafford/deepfake-audio-detection: 0 = real, 1 = fake
+python shortcutscope.py --hf_dataset garystafford/deepfake-audio-detection --fake_label 1
+
+# DeepFake-Audio-Rangers/Arabic_Audio_Deepfake: 0 = fake, 1 = real
+python shortcutscope.py --hf_dataset DeepFake-Audio-Rangers/Arabic_Audio_Deepfake --fake_label 0
 ```
 
-**Audit a dataset laid out as two folders**:
+Other options: `--label_field`, `--audio_field` and `--split` (default: `train`).
+
+**Audit a dataset stored as two folders:**
 
 ```bash
 python shortcutscope.py --real_dir ./data/real --fake_dir ./data/fake
 ```
 
-**Save the full report as JSON**:
+**Save the full report as JSON:**
 
 ```bash
-python shortcutscope.py --hf_dataset <name> --output report.json
+python shortcutscope.py --hf_dataset <name> --fake_label 1 --output report.json
 ```
+
+## Auditing many datasets at once
+
+`shortcutscope_batch.py` runs the same audit on every dataset listed in
+`datasets.json`. It streams a class-balanced random sample (default 500 real
+and 500 fake clips per dataset), resamples to 16 kHz so that zero-crossing
+rates are comparable across datasets, and writes:
+
+- `summary.csv`: one row per dataset with Cohen's d and per-feature AUC for all
+  seven features, the features-only logistic-regression AUC, the verdict, the
+  label mapping used, and the native sample rates of each class;
+- `per_clip/<dataset>.csv`: the seven features for every sampled clip.
+
+```bash
+pip install -r requirements.txt
+python shortcutscope_batch.py --datasets datasets.json --per_class 500 --out_dir audit_results
+```
+
+For every dataset the script prints the **label mapping** it used (for example
+`{'0 (real)': 'real', '1 (fake)': 'fake'}`). Check it. If the label names are
+ambiguous, the dataset is skipped with an error instead of being guessed; add
+`"fake_values": [...]` for that dataset in `datasets.json`. Results are saved
+after each dataset, and datasets already in `summary.csv` are skipped on a
+re-run.
 
 ## What it checks
 
 | Feature | What it measures |
 |---|---|
-| `leading_silence_ms` | Silence duration before speech starts |
-| `trailing_silence_ms` | Silence duration after speech ends |
+| `leading_silence_ms` | Silence before speech starts |
+| `trailing_silence_ms` | Silence after speech ends |
 | `duration_sec` | Total clip length |
 | `rms` | Overall loudness |
-| `zcr` | Zero-crossing rate (texture/noisiness) |
+| `zcr` | Zero-crossing rate (texture / noisiness) |
 | `peak_amplitude` | Maximum amplitude in the clip |
-| `silence_ratio` | Fraction of the clip below the silence threshold |
+| `silence_ratio` | Fraction of samples below the silence threshold |
 
-For each feature, the tool reports **Cohen's d** (effect size between real
-and fake classes) and trains a simple logistic regression using *only*
-these 7 numbers — no audio content, no spectral features, no model of
-speech at all — to see how separable the classes are from artifacts alone.
+Silence is any sample with absolute amplitude at or below 0.01.
+
+For each feature the tool reports **Cohen's d, computed as fake minus real**:
+a positive value means the feature is larger in fake clips. As a rough guide,
+|d| ≥ 0.8 is a large effect. It then trains a plain logistic regression on
+*only* these seven numbers (stratified 80/20 split, seed 42), with no audio
+content, spectral features or speech model, to show how separable the classes
+are from artifacts alone.
 
 ## Interpreting the verdict
 
-- **AUC > 0.85** — high risk. The dataset is very likely contaminated by a
-  shortcut. Investigate before training a model you intend to trust.
-- **AUC 0.65–0.85** — moderate risk. Some signal present; worth a closer look.
-- **AUC < 0.65** — low risk from *these* specific features. Does not
-  guarantee the dataset is free of other, unmeasured shortcuts.
+- **AUC > 0.85**: high risk. The classes are strongly separable from
+  acoustic artifacts alone. Investigate before trusting a model trained on it.
+- **AUC 0.65–0.85**: moderate risk. Some shortcut signal is present.
+- **AUC < 0.65**: low risk from *these* features. This does not rule out
+  other, unmeasured shortcuts.
+
+A low score is not proof that a dataset is clean, and a high score does not
+by itself prove that a particular model uses the shortcut. Pair this audit with
+at least one cross-dataset test.
 
 ## Citation
 
 If you use this tool, please cite:
 
 ```bibtex
-@article{tahir2026shortcutscope,
-  title={Shortcut Learning and Pretraining Lineage in Audio Deepfake Detection: A Multi-Dataset Causal Audit},
-  author={Tahir, Ammara},
-  year={2026}
+@misc{tahir2026acoustic,
+  title  = {Acoustic Shortcuts in a Community-Built Audio Deepfake Dataset: An Audit and Cross-Dataset Stress Test},
+  author = {Tahir, Ammara},
+  year   = {2026},
+  note   = {Preprint}
 }
 ```
 
 ## License
 
-MIT
+MIT (see `LICENSE`).
