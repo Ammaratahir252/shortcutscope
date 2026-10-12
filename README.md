@@ -14,17 +14,21 @@ other data.
 
 ShortcutScope implements the acoustic audit described in:
 
-> A. Tahir, *Acoustic Shortcuts in a Community-Built Audio Deepfake Dataset:
-> An Audit and Cross-Dataset Stress Test*, 2026.
+> A. Tahir, *Acoustic Shortcuts in Audio Deepfake Datasets: An Audit of Ten
+> Corpora and a Cross-Dataset Stress Test*, 2026.
 
 It extends the silence analysis of Müller et al., *"Speech is Silver, Silence
 is Golden: What do ASVspoof-trained Models Really Learn?"* (ASVspoof 2021
 Workshop, [arXiv:2106.12914](https://arxiv.org/abs/2106.12914)), to a broader
 set of features and applies it to community-built datasets.
 
-On `garystafford/deepfake-audio-detection`, the features alone reach an AUC of
-0.958, with zero-crossing rate (Cohen's d = +2.82) and leading silence
-(d = +1.28) as the largest effects. See the paper for details.
+Across the ten datasets audited in the paper (see `datasets.json`), these seven
+features alone separate real from fake clips with an AUC above 0.85 in five
+and between 0.65 and 0.85 in three more. Always resample to a common rate
+before comparing zero-crossing rates: in `garystafford/deepfake-audio-detection`
+real clips are stored at 44.1 kHz and fake clips at 16 kHz, which inflates the
+ZCR difference if it is measured at native rates. The batch mode does this
+automatically.
 
 ## Install
 
@@ -125,7 +129,7 @@ If you use this tool, please cite:
 
 ```bibtex
 @misc{tahir2026acoustic,
-  title  = {Acoustic Shortcuts in a Community-Built Audio Deepfake Dataset: An Audit and Cross-Dataset Stress Test},
+  title  = {Acoustic Shortcuts in Audio Deepfake Datasets: An Audit of Ten Corpora and a Cross-Dataset Stress Test},
   author = {Tahir, Ammara},
   year   = {2026},
   note   = {Preprint}

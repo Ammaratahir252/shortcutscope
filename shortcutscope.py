@@ -10,8 +10,8 @@ these 7 features alone achieves high accuracy, the dataset likely contains a
 
 Background / methodology:
     This tool implements the acoustic audit described in the paper
-    "Acoustic Shortcuts in a Community-Built Audio Deepfake Dataset: An Audit
-    and Cross-Dataset Stress Test" (A. Tahir, 2026). It extends the silence
+    "Acoustic Shortcuts in Audio Deepfake Datasets:
+    An Audit of Ten Corpora and a Cross-Dataset Stress Test" (A. Tahir, 2026). It extends the silence
     analysis of Müller et al., "Speech is Silver, Silence is Golden" (2021), to
     seven features: leading silence, trailing silence, duration, loudness (RMS),
     zero-crossing rate (ZCR), peak amplitude and silence ratio.
