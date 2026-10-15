@@ -90,6 +90,28 @@ ambiguous, the dataset is skipped with an error instead of being guessed; add
 after each dataset, and datasets already in `summary.csv` are skipped on a
 re-run.
 
+## Revised audit and paper experiments (`v2/`)
+
+The `v2/` folder contains the code behind every number in the revised paper.
+
+| File | What it does | Hardware |
+|---|---|---|
+| `audit_v2.py` | Per-clip features for all datasets in `datasets_v2.json`: the 7 features, relative-threshold silence, and 8 features at the **native** sampling rate (bandwidth, roll-off, noise floor, DC offset, clipping), plus format, bit depth and the Hugging Face revision hash. Samples by index where the dataset fits on disk. | CPU |
+| `analyze_audit.py` | Repeated stratified 5-fold CV with standardised features, 95% bootstrap CIs, 200-permutation test, gradient-boosted trees, and the cross-dataset transfer matrix. | CPU |
+| `encode.py` | Runs the frozen Whisper-small encoder once per preprocessing condition and stores the pooled vectors (all frames and audio frames only). | GPU |
+| `heads.py` | Trains and tests all detector heads: 5 conditions x 2 poolings x random/speaker-grouped splits x 5 seeds, matched ASVspoof 2019 LA testing, counterfactual injections, MFCC/feature baselines and the reverse direction. | CPU |
+| `make_v2_assets.py` | Builds the paper's tables, figures and in-text numbers directly from the outputs. | CPU |
+| `notebooks/` | Ready-to-run Kaggle notebooks (GPU: `encode.py` + `heads.py`; CPU: `audit_v2.py`). | |
+
+Run `v2/notebooks/v2_cpu_audit.ipynb` and `v2/notebooks/v2_gpu_experiments.ipynb` on Kaggle
+(the GPU notebook needs the `awsaf49/asvpoof-2019-dataset` input), then:
+
+```bash
+python v2/analyze_audit.py --audit_dir audit_v2 --out_dir audit_analysis
+```
+
+Label convention in `v2/`: 1 = fake, 0 = real; every score is P(fake).
+
 ## What it checks
 
 | Feature | What it measures |
@@ -109,7 +131,8 @@ a positive value means the feature is larger in fake clips. As a rough guide,
 |d| ≥ 0.8 is a large effect. It then trains a plain logistic regression on
 *only* these seven numbers (stratified 80/20 split, seed 42), with no audio
 content, spectral features or speech model, to show how separable the classes
-are from artifacts alone.
+are from artifacts alone. For publication-grade numbers use `v2/`, which
+standardises features, cross-validates and reports confidence intervals.
 
 ## Interpreting the verdict
 
