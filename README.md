@@ -90,27 +90,34 @@ ambiguous, the dataset is skipped with an error instead of being guessed; add
 after each dataset, and datasets already in `summary.csv` are skipped on a
 re-run.
 
-## Revised audit and paper experiments (`v2/`)
+## Reproducing the paper (`experiments/`)
 
-The `v2/` folder contains the code behind every number in the revised paper.
+The `experiments/` folder contains the code behind every number in the paper.
 
 | File | What it does | Hardware |
 |---|---|---|
-| `audit_v2.py` | Per-clip features for all datasets in `datasets_v2.json`: the 7 features, relative-threshold silence, and 8 features at the **native** sampling rate (bandwidth, roll-off, noise floor, DC offset, clipping), plus format, bit depth and the Hugging Face revision hash. Samples by index where the dataset fits on disk. | CPU |
+| `audit.py` | Per-clip features for all datasets in `audit_datasets.json`: the 7 features, relative-threshold silence, and 8 features at the **native** sampling rate (bandwidth, roll-off, noise floor, DC offset, clipping), plus format, bit depth and the Hugging Face revision hash. Samples by index where the dataset fits on disk. | CPU |
 | `analyze_audit.py` | Repeated stratified 5-fold CV with standardised features, 95% bootstrap CIs, 200-permutation test, gradient-boosted trees, and the cross-dataset transfer matrix. | CPU |
 | `encode.py` | Runs the frozen Whisper-small encoder once per preprocessing condition and stores the pooled vectors (all frames and audio frames only). | GPU |
-| `heads.py` | Trains and tests all detector heads: 5 conditions x 2 poolings x random/speaker-grouped splits x 5 seeds, matched ASVspoof 2019 LA testing, counterfactual injections, MFCC/feature baselines and the reverse direction. | CPU |
-| `make_v2_assets.py` | Builds the paper's tables, figures and in-text numbers directly from the outputs. | CPU |
-| `notebooks/` | Ready-to-run Kaggle notebooks (GPU: `encode.py` + `heads.py`; CPU: `audit_v2.py`). | |
+| `heads.py` | Trains and tests all detector heads: 5 preprocessing conditions x 2 poolings x random/speaker-grouped splits x 5 seeds, matched ASVspoof 2019 LA testing, counterfactual injections, MFCC/feature baselines and the reverse direction. | CPU |
+| `make_paper_assets.py` | Builds the paper's tables, figures and in-text numbers directly from the outputs. | CPU |
+| `common.py` | Shared audio loading, preprocessing conditions and feature definitions. | |
+| `notebooks/` | Ready-to-run Kaggle notebooks: `kaggle_audit_cpu.ipynb` and `kaggle_detector_gpu.ipynb`. | |
 
-Run `v2/notebooks/v2_cpu_audit.ipynb` and `v2/notebooks/v2_gpu_experiments.ipynb` on Kaggle
-(the GPU notebook needs the `awsaf49/asvpoof-2019-dataset` input), then:
+**Steps**
+
+1. Run `experiments/notebooks/kaggle_audit_cpu.ipynb` on Kaggle (CPU) and download `audit_results.zip`.
+2. Run `experiments/notebooks/kaggle_detector_gpu.ipynb` on Kaggle (GPU T4, with the
+   `awsaf49/asvpoof-2019-dataset` input) and download `detector_results.zip`.
+3. Unzip both and run:
 
 ```bash
-python v2/analyze_audit.py --audit_dir audit_v2 --out_dir audit_analysis
+python experiments/analyze_audit.py --audit_dir audit_results --out_dir audit_analysis
+python experiments/make_paper_assets.py --results detector_out/results \
+       --audit_analysis audit_analysis --out paper_assets
 ```
 
-Label convention in `v2/`: 1 = fake, 0 = real; every score is P(fake).
+Label convention in `experiments/`: 1 = fake, 0 = real; every score is P(fake).
 
 ## What it checks
 
@@ -131,7 +138,7 @@ a positive value means the feature is larger in fake clips. As a rough guide,
 |d| ≥ 0.8 is a large effect. It then trains a plain logistic regression on
 *only* these seven numbers (stratified 80/20 split, seed 42), with no audio
 content, spectral features or speech model, to show how separable the classes
-are from artifacts alone. For publication-grade numbers use `v2/`, which
+are from artifacts alone. For publication-grade numbers use `experiments/`, which
 standardises features, cross-validates and reports confidence intervals.
 
 ## Interpreting the verdict
